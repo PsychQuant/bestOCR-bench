@@ -26,12 +26,17 @@ Hard rules (CI fails the PR):
   name with a known adjudicator segment. Unknown estimands are rejected, not
   admitted — hard rule 2 enforced at the gate.
 - `value` ranges per estimand family: `speed.*` > 0 (milliseconds);
-  `quality.*recall*` / `*_f1` / `*share` ∈ [0, 1]; `*reading_order_tau*` ∈ [−1, 1].
+  `quality.*recall*` / `*_f1` / `*share` / `*accuracy*` ∈ [0, 1];
+  `*reading_order_tau*` ∈ [−1, 1].
 - `corpus_id` MUST exist in `corpus/manifest.jsonl` — only measurements against
   the canonical corpus are comparable.
 - No bitwise-duplicate rows repo-wide.
 - `condition` MUST carry the full tuple (`model`, `quant`, `doc_type`,
   `platform`, `hardware`, `instrument`; `dpi` and `tool_version` nullable).
+  `triage.*` estimands additionally REQUIRE `triage_text_min` and
+  `triage_frag_max` — the effective thresholds that produced the routing
+  verdicts (schema §3): rows measured under different thresholds are different
+  conditions and must never share a grouping key.
 
 Soft flags (never fail CI — printed for human review):
 

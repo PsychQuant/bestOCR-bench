@@ -50,6 +50,10 @@ CONSENSUS_RE = re.compile(r"^consensus\.([a-z0-9_]+)\.([a-z0-9_]+)@v\d+$")
 REQUIRED = {"estimand", "value", "condition", "tier", "source",
             "contributor", "machine_id", "measured_at", "corpus_id"}
 CONDITION_REQUIRED = {"model", "quant", "doc_type", "platform", "hardware", "instrument"}
+# Per-estimand extras (schema §3): triage rows are a function of two env-overridable
+# thresholds — without them in the condition, rows measured under different
+# thresholds are indistinguishable and any aggregation is cross-condition (DA-1).
+TRIAGE_CONDITION_REQUIRED = {"triage_text_min", "triage_frag_max"}
 FILENAME_RE = re.compile(r"^\d{8}T\d{6}Z-[A-Za-z0-9-]+-[0-9a-f]{12}\.jsonl$")
 MEASURED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
@@ -124,6 +128,8 @@ def main():
                 errors.append(f"{where}: condition is not an object")
                 continue
             cond_missing = CONDITION_REQUIRED - condition.keys()
+            if row.get("estimand", "").startswith("triage."):
+                cond_missing |= TRIAGE_CONDITION_REQUIRED - condition.keys()
             if cond_missing:
                 errors.append(f"{where}: condition missing {sorted(cond_missing)}")
             if row["tier"] != "T2-community":
@@ -146,7 +152,9 @@ def main():
                       "rows across a tool upgrade are indistinguishable (bestOCR #28)")
 
             key = (row["estimand"], condition.get("model"),
-                   condition.get("doc_type"), row["corpus_id"])
+                   condition.get("doc_type"), row["corpus_id"],
+                   # triage grouping must never pool across thresholds (schema §3 / DA-1)
+                   condition.get("triage_text_min"), condition.get("triage_frag_max"))
             if isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool):
                 groups.setdefault(key, []).append((where, float(row["value"])))
 
