@@ -42,6 +42,7 @@ EST_VOCAB = {
     "quality.token_recall_vs_cloud@v1",
     "quality.reading_order_tau@v1",
     "quality.table_structure_f1@v1",
+    "triage.route_accuracy@v1",
 }
 ADJUDICATOR_SEGMENTS = {"ds_lite", "majority", "ds_full", "prior_weighted", "irt", "rover"}
 CONSENSUS_RE = re.compile(r"^consensus\.([a-z0-9_]+)\.([a-z0-9_]+)@v\d+$")
@@ -70,9 +71,9 @@ def value_range_error(estimand, value):
     elif "reading_order_tau" in estimand:
         if not -1.0 <= value <= 1.0:
             return "tau must be in [-1, 1]"
-    elif any(token in estimand for token in ("recall", "_f1", "share")):
+    elif any(token in estimand for token in ("recall", "_f1", "share", "accuracy")):
         if not 0.0 <= value <= 1.0:
-            return "recall/f1/share must be in [0, 1]"
+            return "recall/f1/share/accuracy must be in [0, 1]"
     return None
 
 
