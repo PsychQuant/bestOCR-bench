@@ -128,10 +128,31 @@ def main():
                 errors.append(f"{where}: condition is not an object")
                 continue
             cond_missing = CONDITION_REQUIRED - condition.keys()
+            groupable = True   # rows with threshold defects must not reach grouping
             if row.get("estimand", "").startswith("triage."):
                 cond_missing |= TRIAGE_CONDITION_REQUIRED - condition.keys()
+                # Presence is not enough (verify R2): null / bool / non-numeric /
+                # out-of-domain thresholds would silently re-merge different
+                # conditions (None == None) or crash grouping (unhashable list).
+                for k, ok_domain, domain_desc in (
+                    ("triage_text_min", lambda v: v > 0, "a number > 0"),
+                    ("triage_frag_max", lambda v: 0 < v <= 1, "a number in (0, 1]"),
+                ):
+                    if k not in condition:
+                        continue   # absence already reported via cond_missing
+                    v = condition[k]
+                    if isinstance(v, bool) or not isinstance(v, (int, float)) or not ok_domain(v):
+                        errors.append(f"{where}: {k} must be {domain_desc} (got {v!r})")
+                        groupable = False
+            elif TRIAGE_CONDITION_REQUIRED & condition.keys():
+                # schema §3: non-triage rows omit both keys — carrying them would
+                # split soft-outlier groups that should be one (verify R2).
+                errors.append(f"{where}: {sorted(TRIAGE_CONDITION_REQUIRED & condition.keys())} "
+                              "are only valid on triage.* rows (schema §3: non-triage rows omit both)")
+                groupable = False
             if cond_missing:
                 errors.append(f"{where}: condition missing {sorted(cond_missing)}")
+                groupable = False
             if row["tier"] != "T2-community":
                 errors.append(f"{where}: tier must be \"T2-community\" "
                               f"(got {row['tier']!r}) — this repo mints no other provenance")
@@ -155,7 +176,7 @@ def main():
                    condition.get("doc_type"), row["corpus_id"],
                    # triage grouping must never pool across thresholds (schema §3 / DA-1)
                    condition.get("triage_text_min"), condition.get("triage_frag_max"))
-            if isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool):
+            if groupable and isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool):
                 groups.setdefault(key, []).append((where, float(row["value"])))
 
     # Soft outlier flags — never fail CI.
