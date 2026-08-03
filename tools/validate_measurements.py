@@ -30,6 +30,7 @@ CI failing on a legitimately new estimand is the reminder, not a bug.
 """
 import glob
 import json
+import math
 import os
 import re
 import statistics
@@ -128,31 +129,35 @@ def main():
                 errors.append(f"{where}: condition is not an object")
                 continue
             cond_missing = CONDITION_REQUIRED - condition.keys()
-            groupable = True   # rows with threshold defects must not reach grouping
+            row_error_start = len(errors)   # any error on this row excludes it from grouping (verify R3)
             if row.get("estimand", "").startswith("triage."):
                 cond_missing |= TRIAGE_CONDITION_REQUIRED - condition.keys()
                 # Presence is not enough (verify R2): null / bool / non-numeric /
                 # out-of-domain thresholds would silently re-merge different
                 # conditions (None == None) or crash grouping (unhashable list).
+                # Finite-only (verify R3): json.load turns 1e309 into float("inf"),
+                # which passes `> 0` — finiteness is checked on floats only (calling
+                # math.isfinite on an arbitrarily large int would overflow to C double).
+                def _domain_number(v):
+                    if isinstance(v, bool) or not isinstance(v, (int, float)):
+                        return False
+                    return not (isinstance(v, float) and not math.isfinite(v))
                 for k, ok_domain, domain_desc in (
-                    ("triage_text_min", lambda v: v > 0, "a number > 0"),
+                    ("triage_text_min", lambda v: v > 0, "a finite number > 0"),
                     ("triage_frag_max", lambda v: 0 < v <= 1, "a number in (0, 1]"),
                 ):
                     if k not in condition:
                         continue   # absence already reported via cond_missing
                     v = condition[k]
-                    if isinstance(v, bool) or not isinstance(v, (int, float)) or not ok_domain(v):
+                    if not _domain_number(v) or not ok_domain(v):
                         errors.append(f"{where}: {k} must be {domain_desc} (got {v!r})")
-                        groupable = False
             elif TRIAGE_CONDITION_REQUIRED & condition.keys():
                 # schema §3: non-triage rows omit both keys — carrying them would
                 # split soft-outlier groups that should be one (verify R2).
                 errors.append(f"{where}: {sorted(TRIAGE_CONDITION_REQUIRED & condition.keys())} "
                               "are only valid on triage.* rows (schema §3: non-triage rows omit both)")
-                groupable = False
             if cond_missing:
                 errors.append(f"{where}: condition missing {sorted(cond_missing)}")
-                groupable = False
             if row["tier"] != "T2-community":
                 errors.append(f"{where}: tier must be \"T2-community\" "
                               f"(got {row['tier']!r}) — this repo mints no other provenance")
@@ -172,11 +177,15 @@ def main():
                 print(f"warn {where}: adapter-backed row without tool_version — "
                       "rows across a tool upgrade are indistinguishable (bestOCR #28)")
 
-            key = (row["estimand"], condition.get("model"),
-                   condition.get("doc_type"), row["corpus_id"],
-                   # triage grouping must never pool across thresholds (schema §3 / DA-1)
-                   condition.get("triage_text_min"), condition.get("triage_frag_max"))
-            if groupable and isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool):
+            # Whole-row error state gates grouping (verify R3): a row that failed ANY
+            # hard check must not shape the soft-outlier statistics — key construction
+            # lives inside the guard so unhashable defective values can never reach it.
+            if len(errors) == row_error_start \
+                    and isinstance(row["value"], (int, float)) and not isinstance(row["value"], bool):
+                key = (row["estimand"], condition.get("model"),
+                       condition.get("doc_type"), row["corpus_id"],
+                       # triage grouping must never pool across thresholds (schema §3 / DA-1)
+                       condition.get("triage_text_min"), condition.get("triage_frag_max"))
                 groups.setdefault(key, []).append((where, float(row["value"])))
 
     # Soft outlier flags — never fail CI.
