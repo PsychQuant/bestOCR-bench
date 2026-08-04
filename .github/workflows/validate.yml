@@ -5,6 +5,8 @@ on:
       - "measurements/**"
       - "corpus/**"
       - "tools/**"
+      - "schema/**"
+      - "SUBMISSION_FORMAT.md"
   push:
     branches: [main]
 jobs:
