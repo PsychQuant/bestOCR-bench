@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validator self-test
+        run: python3 tools/tests/test_validate_measurements.py
       - name: Validate corpus manifest
         run: python3 tools/validate_manifest.py corpus/manifest.jsonl
       - name: Validate measurements
