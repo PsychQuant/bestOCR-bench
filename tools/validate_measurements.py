@@ -66,19 +66,56 @@ def estimand_ok(name):
     return bool(match and match.group(1) in ADJUDICATOR_SEGMENTS)
 
 
+# Range family per CANONICAL estimand name — an explicit table, not substring
+# matching, so adding a vocabulary entry never lands in the wrong family via
+# an incidental token and there is no elif-order shadowing (#3). Keep this
+# table in lockstep with EST_VOCAB: a vocabulary entry without a family row
+# is simply range-unchecked (admission already gated it), which is the same
+# honest posture as unknown consensus quantities below.
+_POSITIVE_MS = "positive_ms"
+_UNIT_INTERVAL = "unit_interval"
+_TAU = "tau"
+RANGE_FAMILY = {
+    "speed.ms_per_page@v1": _POSITIVE_MS,
+    "speed.ensemble_ms_per_page@v1": _POSITIVE_MS,
+    "quality.word_recall@v1": _UNIT_INTERVAL,
+    "quality.token_recall_vs_cloud@v1": _UNIT_INTERVAL,
+    "quality.reading_order_tau@v1": _TAU,
+    "quality.table_structure_f1@v1": _UNIT_INTERVAL,
+    "triage.route_accuracy@v1": _UNIT_INTERVAL,
+}
+
+
+def _consensus_range_family(quantity):
+    """Documented rule (#3) for the free-form consensus quantity segment:
+    tau-like quantities are correlations in [-1, 1]; recall/f1/share/
+    accuracy-like quantities are proportions in [0, 1]; ms-like are positive
+    milliseconds; anything else is range-unchecked. Keyword scan is confined
+    to the QUANTITY segment, so adjudicator ids can never collide."""
+    if "tau" in quantity:
+        return _TAU
+    if any(token in quantity for token in ("recall", "_f1", "share", "accuracy")):
+        return _UNIT_INTERVAL
+    if "ms" in quantity:
+        return _POSITIVE_MS
+    return None
+
+
 def value_range_error(estimand, value):
     """Range per estimand family; None when in range."""
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return "value is not numeric"
-    if estimand.startswith("speed."):
-        if value <= 0:
-            return "speed values are positive milliseconds"
-    elif "reading_order_tau" in estimand:
-        if not -1.0 <= value <= 1.0:
-            return "tau must be in [-1, 1]"
-    elif any(token in estimand for token in ("recall", "_f1", "share", "accuracy")):
-        if not 0.0 <= value <= 1.0:
-            return "recall/f1/share/accuracy must be in [0, 1]"
+    family = RANGE_FAMILY.get(estimand)
+    if family is None:
+        match = CONSENSUS_RE.match(estimand)
+        if match:
+            family = _consensus_range_family(match.group(2))
+    if family == _POSITIVE_MS and value <= 0:
+        return "speed values are positive milliseconds"
+    if family == _TAU and not -1.0 <= value <= 1.0:
+        return "tau must be in [-1, 1]"
+    if family == _UNIT_INTERVAL and not 0.0 <= value <= 1.0:
+        return "recall/f1/share/accuracy must be in [0, 1]"
     return None
 
 
