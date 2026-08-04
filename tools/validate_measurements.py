@@ -105,6 +105,11 @@ def value_range_error(estimand, value):
     """Range per estimand family; None when in range."""
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return "value is not numeric"
+    # Finite-only (#4): speed's `value <= 0` is False for NaN/+inf, so both
+    # sailed through range checks. Same float-only isfinite discipline as the
+    # triage thresholds (an arbitrarily large int stays valid).
+    if isinstance(value, float) and not math.isfinite(value):
+        return "value must be finite (NaN/Infinity rejected)"
     family = RANGE_FAMILY.get(estimand)
     if family is None:
         match = CONSENSUS_RE.match(estimand)

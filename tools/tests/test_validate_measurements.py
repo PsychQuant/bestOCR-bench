@@ -184,14 +184,16 @@ CASES = [
          [base_row(value=1.5)]),
     case("accuracy negative value rejected", False, r"must be in \[0, 1\]",
          [base_row(value=-0.1)]),
-    case("accuracy NaN value rejected (not-chained range check is NaN-closed)", False,
-         r"must be in \[0, 1\]", raw_lines=[raw_row(base_row(), value="NaN")]),
+    case("accuracy NaN value rejected", False, r"value must be finite",
+         raw_lines=[raw_row(base_row(), value="NaN")]),
     case("speed value zero rejected", False, r"positive milliseconds",
          [speed_row(value=0)]),
     case("speed negative value rejected", False, r"positive milliseconds",
          [speed_row(value=-3)]),
-    case("speed NaN value rejected", False, r"(positive milliseconds|finite)",
+    case("speed NaN value rejected", False, r"value must be finite",
          raw_lines=[raw_row(speed_row(), value="NaN")]),
+    case("speed Infinity value rejected", False, r"value must be finite",
+         raw_lines=[raw_row(speed_row(), value="1e309")]),
 
     # ── Row structure (representatives of uniform mechanisms) ────────────
     case("tier other than T2-community rejected", False, r"tier must be",
@@ -212,13 +214,12 @@ CASES = [
          raw_lines=["{not json"]),
 ]
 
-# Known-gap pinning: speed's range check is `value <= 0`, which is False for
-# NaN — the row is admitted (same for +inf). bench#4 tracks the finiteness fix.
-# Until it lands, the case is pinned as a KNOWN GAP (reported, not green-lied);
-# when #4 lands the pin auto-flips into a strict failing assertion to update.
-KNOWN_GAPS = {
-    "speed NaN value rejected": "bench#4 — speed value NaN/Inf admitted by `value <= 0` check",
-}
+# Known-gap pinning (strict-xfail): map a case name to the tracking issue while
+# a KNOWN validator gap makes it fail its strict expectation. A pinned case that
+# starts passing strictly FAILS the suite ("fix landed — remove the pin").
+# Empty right now: the bench#4 pin (speed NaN admitted) was redeemed when #4
+# landed — exactly the lifecycle this mechanism exists for.
+KNOWN_GAPS = {}
 
 
 def main():
