@@ -3,6 +3,9 @@
 > where code and tests pin it. This copy exists so the contract is readable
 > where submissions happen; on divergence, the canonical file wins and this
 > copy must be re-synced (do not edit it here).
+> Vendored from PsychQuant/bestOCR@f6f1b24 (evidence/schema.md) — update
+> this line on every re-vendor so third parties can verify fidelity without a
+> local clone.
 
 # Evidence schema — the labelling contract
 
