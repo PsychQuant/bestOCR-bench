@@ -87,17 +87,18 @@ RANGE_FAMILY = {
 
 
 def _consensus_range_family(quantity):
-    """Documented rule (#3) for the free-form consensus quantity segment:
-    tau-like quantities are correlations in [-1, 1]; recall/f1/share/
-    accuracy-like quantities are proportions in [0, 1]; ms-like are positive
-    milliseconds; anything else is range-unchecked. Keyword scan is confined
-    to the QUANTITY segment, so adjudicator ids can never collide."""
-    if "tau" in quantity:
+    """Documented rule (#3) for the free-form consensus quantity segment,
+    PRESERVING the pre-table semantics exactly: `reading_order_tau` quantities
+    are correlations in [-1, 1]; recall/`_f1`/share/accuracy quantities are
+    proportions in [0, 1]; anything else is range-unchecked (admission already
+    gated it). The scan is confined to the QUANTITY segment so adjudicator ids
+    can never collide. Widening the keyword set (bare `tau`, `ms`, token
+    boundaries) would be a contract change for existing rows — deliberately
+    out of scope for a behaviour-preserving refactor."""
+    if "reading_order_tau" in quantity:
         return _TAU
     if any(token in quantity for token in ("recall", "_f1", "share", "accuracy")):
         return _UNIT_INTERVAL
-    if "ms" in quantity:
-        return _POSITIVE_MS
     return None
 
 

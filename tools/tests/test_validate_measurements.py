@@ -194,6 +194,23 @@ CASES = [
          raw_lines=[raw_row(speed_row(), value="NaN")]),
     case("speed Infinity value rejected", False, r"value must be finite",
          raw_lines=[raw_row(speed_row(), value="1e309")]),
+    case("speed -Infinity value rejected", False, r"value must be finite",
+         raw_lines=[raw_row(speed_row(), value="-1e309")]),
+    case("tau NaN value rejected", False, r"value must be finite",
+         raw_lines=[raw_row(base_row(estimand="quality.reading_order_tau@v1"), value="NaN")]),
+    # Consensus family dispatch (quantity-confined keyword rule, #3)
+    case("consensus accuracy quantity gets [0,1] range", False, r"must be in \[0, 1\]",
+         [base_row(estimand="consensus.ds_lite.char_accuracy@v1", value=1.5,
+                   condition={"triage_text_min": DELETE, "triage_frag_max": DELETE})]),
+    case("consensus unknown quantity is range-unchecked but finiteness still applies", False,
+         r"value must be finite",
+         raw_lines=[raw_row(base_row(estimand="consensus.ds_lite.mystery@v1",
+                                     condition={"triage_text_min": DELETE,
+                                                "triage_frag_max": DELETE}), value="NaN")]),
+    case("consensus unknown quantity accepts out-of-unit finite value (range-unchecked)", True,
+         r"pass hard checks",
+         [base_row(estimand="consensus.ds_lite.mystery@v1", value=42.0,
+                   condition={"triage_text_min": DELETE, "triage_frag_max": DELETE})]),
 
     # ── Row structure (representatives of uniform mechanisms) ────────────
     case("tier other than T2-community rejected", False, r"tier must be",
@@ -222,8 +239,26 @@ CASES = [
 KNOWN_GAPS = {}
 
 
+def check_range_family_lockstep():
+    """RANGE_FAMILY must cover EST_VOCAB exactly — a vocabulary entry missing
+    from the table would be silently range-unchecked (codex #3 finding)."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "tools"))
+    import validate_measurements as vm
+    problems = []
+    missing = vm.EST_VOCAB - set(vm.RANGE_FAMILY)
+    extra = set(vm.RANGE_FAMILY) - vm.EST_VOCAB
+    if missing:
+        problems.append(f"EST_VOCAB entries missing from RANGE_FAMILY: {sorted(missing)}")
+    if extra:
+        problems.append(f"RANGE_FAMILY entries not in EST_VOCAB: {sorted(extra)}")
+    return problems
+
+
 def main():
     failures = []
+    for problem in check_range_family_lockstep():
+        failures.append(("RANGE_FAMILY lockstep", [problem], ""))
+        print(f"FAIL  RANGE_FAMILY lockstep: {problem}")
     gaps_hit = []
     strict_passed_pins = set()
     passed = 0
