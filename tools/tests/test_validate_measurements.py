@@ -224,6 +224,8 @@ KNOWN_GAPS = {
 def main():
     failures = []
     gaps_hit = []
+    strict_passed_pins = set()
+    passed = 0
     for c in CASES:
         code, output = run_validator(c["rows"], filename=c["filename"],
                                      raw_lines=c["raw_lines"])
@@ -245,17 +247,26 @@ def main():
             failures.append((c["name"], problems, output.strip()[:300]))
             print(f"FAIL  {c['name']}: {'; '.join(problems)}")
         else:
+            # True XPASS candidates only: a pinned case that passed EVERY
+            # strict assertion (codex R3 — a pinned case failing on a
+            # traceback or pattern is a plain failure, not a stale pin).
+            if c["name"] in KNOWN_GAPS:
+                strict_passed_pins.add(c["name"])
+            passed += 1
             print(f"ok    {c['name']}")
-    # Strict-xfail semantics (codex R2 finding): a pinned gap that stopped
-    # gapping means the tracked fix landed — the pin is stale and MUST be
-    # removed (flipping the case into a normal strict assertion). Silently
-    # passing would erase the reminder this mechanism exists to provide.
-    stale_gaps = set(KNOWN_GAPS) - {name for name, _ in gaps_hit}
-    for name in sorted(stale_gaps):
+    # A pin naming no case is a suite-config error, not a gap.
+    case_names = {c["name"] for c in CASES}
+    for name in sorted(set(KNOWN_GAPS) - case_names):
+        failures.append((name, ["KNOWN_GAPS pin references no existing case — config error"], ""))
+        print(f"FAIL  {name}: KNOWN_GAPS pin references no existing case")
+    # Strict-xfail: a pin whose case now passes all strict assertions means
+    # the tracked fix landed — fail loudly so the pin gets removed.
+    for name in sorted(strict_passed_pins):
         failures.append((name, ["KNOWN_GAPS pin is stale — the tracked fix landed; "
                                 "remove the pin and keep the strict assertion"], ""))
         print(f"FAIL  {name}: stale KNOWN_GAPS pin (fix landed — remove the pin)")
-    print(f"\n{len(CASES) - len(failures) - len(gaps_hit) + len(stale_gaps)}/{len(CASES)} cases passed"
+        passed -= 1
+    print(f"\n{passed}/{len(CASES)} cases passed"
           + (f", {len(gaps_hit)} known gap(s) pinned" if gaps_hit else ""))
     if failures:
         for name, _, snippet in failures:
