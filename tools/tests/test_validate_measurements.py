@@ -3,7 +3,7 @@
 
 Zero dependencies (stdlib only). Each case builds a throwaway fixture repo
 (corpus manifest + measurement rows) in a tempdir, runs the validator as a
-subprocess, and asserts on exit code + output pattern + no-traceback.
+subprocess, and asserts on exit code + anchored output pattern + no-traceback (the traceback check runs for every case, known-gap pins included).
 Fixtures are programmatic, not checked-in files.
 
 Coverage claim (deliberately narrow): this suite fossilizes the #1 R1–R4
@@ -190,7 +190,7 @@ CASES = [
          [speed_row(value=0)]),
     case("speed negative value rejected", False, r"positive milliseconds",
          [speed_row(value=-3)]),
-    case("speed NaN value rejected", False, r"",
+    case("speed NaN value rejected", False, r"(positive milliseconds|finite)",
          raw_lines=[raw_row(speed_row(), value="NaN")]),
 
     # ── Row structure (representatives of uniform mechanisms) ────────────
@@ -205,10 +205,10 @@ CASES = [
          [base_row(corpus_id="nope")]),
     case("bad measured_at rejected", False, r"measured_at must be ISO-8601",
          [base_row(measured_at="yesterday")]),
-    case("malformed filename rejected", False, r"filename", [base_row()],
+    case("malformed filename rejected", False, r"filename does not match", [base_row()],
          filename="bad-name.jsonl"),
-    case("duplicate rows rejected", False, r"duplicate", [base_row(), base_row()]),
-    case("broken JSON line rejected with diagnosis", False, r"(invalid JSON|not valid JSON|JSON)",
+    case("duplicate rows rejected", False, r"bitwise-duplicate of", [base_row(), base_row()]),
+    case("broken JSON line rejected with diagnosis", False, r"invalid JSON \(",
          raw_lines=["{not json"]),
 ]
 
@@ -229,22 +229,33 @@ def main():
                                      raw_lines=c["raw_lines"])
         ok = (code == 0)
         problems = []
+        # Traceback check runs for EVERY case, including known-gap pins —
+        # a crash is never an acceptable way to be wrong (codex R2 finding).
+        if "Traceback" in output:
+            problems.append("validator raised a traceback — defects must be controlled errors")
+        if ok != c["expect_ok"] and not problems and c["name"] in KNOWN_GAPS:
+            gaps_hit.append((c["name"], KNOWN_GAPS[c["name"]]))
+            print(f"gap   {c['name']} — {KNOWN_GAPS[c['name']]}")
+            continue
         if ok != c["expect_ok"]:
-            if c["name"] in KNOWN_GAPS:
-                gaps_hit.append((c["name"], KNOWN_GAPS[c["name"]]))
-                print(f"gap   {c['name']} — {KNOWN_GAPS[c['name']]}")
-                continue
             problems.append(f"exit={code}, expected {'ok' if c['expect_ok'] else 'FAIL'}")
         if c["pattern"] and not re.search(c["pattern"], output):
             problems.append(f"output lacks /{c['pattern']}/")
-        if "Traceback" in output:
-            problems.append("validator raised a traceback — defects must be controlled errors")
         if problems:
             failures.append((c["name"], problems, output.strip()[:300]))
             print(f"FAIL  {c['name']}: {'; '.join(problems)}")
         else:
             print(f"ok    {c['name']}")
-    print(f"\n{len(CASES) - len(failures) - len(gaps_hit)}/{len(CASES)} cases passed"
+    # Strict-xfail semantics (codex R2 finding): a pinned gap that stopped
+    # gapping means the tracked fix landed — the pin is stale and MUST be
+    # removed (flipping the case into a normal strict assertion). Silently
+    # passing would erase the reminder this mechanism exists to provide.
+    stale_gaps = set(KNOWN_GAPS) - {name for name, _ in gaps_hit}
+    for name in sorted(stale_gaps):
+        failures.append((name, ["KNOWN_GAPS pin is stale — the tracked fix landed; "
+                                "remove the pin and keep the strict assertion"], ""))
+        print(f"FAIL  {name}: stale KNOWN_GAPS pin (fix landed — remove the pin)")
+    print(f"\n{len(CASES) - len(failures) - len(gaps_hit) + len(stale_gaps)}/{len(CASES)} cases passed"
           + (f", {len(gaps_hit)} known gap(s) pinned" if gaps_hit else ""))
     if failures:
         for name, _, snippet in failures:
